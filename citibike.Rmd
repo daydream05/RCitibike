@@ -1,0 +1,191 @@
+---
+title: "Citibike"
+output: html_document
+---
+
+```{r}
+library(readr)
+library(dplyr)
+
+citibike = read_csv("201606-citibike-tripdata.csv")
+
+
+
+```
+
+```{r}
+citibike_variables = names(citibike)
+citibike_variables
+```
+
+Cleaned variable names for citibike
+```{r}
+
+citibike_clean = rename(citibike, start_station_id = `start station id`,
+                               start_station_name = `start station name`,
+                               start_station_latitude = `start station latitude`,
+                               start_station_longitude = `start station longitude`,
+                               end_station_id = `end station id`,
+                               end_station_name = `end station name`,
+                               end_station_latitude = `end station latitude`,
+                               end_station_longitude =`end station longitude`,
+                               birth_year = `birth year`)
+
+```
+
+Get all the unique stations in our data
+
+```{r}
+
+start_stations = citibike_clean %>%
+  select(start_station_id, start_station_longitude, start_station_latitude) %>% 
+  unique()
+
+end_stations = citibike_clean %>% 
+  select(end_station_id, end_station_longitude, end_station_latitude) %>% 
+  unique 
+```
+
+It looks like all the stations were used as a dropoff and starting point.
+
+Now let's map these stations. To create a map, we load the libary 'maps' and plot the min./max latitude and min/max longitutde.
+**IMPORTANT** 
+Longitude data is the x-axis
+Latitude data is the y-axis
+```{r}
+library(RgoogleMaps)
+
+#We are giving the map 1 standard deviation bigger than the ends of the locations
+long_min <- min(start_stations$start_station_longitude)
+long_max <-  max(start_stations$start_station_longitude)
+
+lat_min <- min(start_stations$start_station_latitude)
+lat_max <- min(start_stations$start_station_latitude)
+
+lon <- c(long_min, long_max)
+lat <- c(lat_min, lat_max)
+
+center <- c(mean(lat), mean(lon))
+zoom <- min(MaxZoom(range(lat), range(lon)))
+
+citibikeMap <- GetMap(center=center,
+                      zoom=zoom,
+                      maptype="terrain",
+                      destfile="citimap.png",
+                      )
+
+mymarkers <- start_stations %>% 
+  select(start_station_latitude, start_station_longitude) %>% 
+  rename(lat = start_station_latitude,
+         lon = start_station_longitude) %>% 
+  mutate(size = "small",
+         col = "red",
+         char = "") %>% 
+  sample_n(100)
+
+citibikeMap2 <- GetMap.bbox(lonR = range(lon),
+                            latR = range(lat),
+                            center = center,
+                            destfile = "citistations.png",
+                            markers = mymarkers,
+                            zoom = 11,
+                            maptype = "terrain")
+```
+
+Let's try to map using ggplot2
+
+```{r}
+
+library(rgdal)
+library(ggplot2)
+
+counties <- readOGR("nybb_16c/nybb.shp", layer="nybb")
+
+
+```
+
+```{r}
+# map the counties
+
+nymap <- ggplot() +
+  geom_polygon(data = counties,
+               aes(x=long, y=lat, group=group))
+
+ggplot() +
+  geom_point(data = stations,
+             aes(x = start_station_longitude,
+                 y = start_station_latitude),
+             color = "red")
+```
+
+Let's combine the 2
+```{r}
+nymap +
+  geom_point(data = stations,
+             aes(x = start_station_longitude,
+                 y = start_station_latitude))
+
+proj4string(counties)
+
+```
+
+```{r}
+
+class(start_stations)
+## [1] "data.frame"
+coordinates(start_stations)<-~start_station_longitude+start_station_latitude
+class(start_stations)
+## [1] "SpatialPointsDataFrame"
+## attr(,"package")
+## [1] "sp"
+
+# does it have a projection/coordinate system assigned?
+proj4string(start_stations) # nope
+## [1] NA
+
+# we know that the coordinate system is NAD83 so we can manually
+# tell R what the coordinate system is
+proj4string(start_stations)<-CRS("+proj=longlat +datum=NAD83")
+
+# now we can use the spTransform function to project. We will project
+# the mapdata and for coordinate reference system (CRS) we will
+# assign the projection from counties
+
+mapdata<-spTransform(start_stations, CRS(proj4string(counties)))
+
+# double check that they match
+identical(proj4string(start_stations),proj4string(counties))
+## [1] TRUE
+
+```
+
+```{r}
+
+mapdata <- data.frame(mapdata)
+
+# We;'re not dealing with lat/long but with x/y
+# this is not necessary but for clarity change variable names
+names(mapdata)[names(mapdata)=="start_station_longitude"]<-"x"
+names(mapdata)[names(mapdata)=="start_station_latitude"]<-"y"
+
+# now create the map
+ggplot() +geom_polygon(data=counties, aes(x=long, y=lat, group=group))+  geom_point(data=mapdata, aes(x=x, y=y), color="red")
+```
+
+```{r}
+
+ggplot() +  
+    geom_polygon(data=counties, aes(x=long, y=lat, group=group), fill="grey40", 
+        colour="grey90", alpha=1)+
+    labs(x="", y="", title="Building Area Within 1000m")+ #labels
+    theme(axis.ticks.y = element_blank(),axis.text.y = element_blank(), # get rid of x ticks/text
+          axis.ticks.x = element_blank(),axis.text.x = element_blank(), # get rid of y ticks/text
+          plot.title = element_text(lineheight=.8, face="bold", vjust=1))+ # make title bold and add space
+    geom_point(aes(x=x, y=y), data=mapdata, alpha=1, size=3, color="grey20")+# to get outline
+    geom_point(aes(x=x, y=y), data=mapdata, alpha=1, size=2)+
+    scale_colour_gradientn("Building\narea (sq-km)", 
+        colours=c( "#f9f3c2","#660000"))+ # change color scale
+    coord_equal(ratio=1) # square plot to avoid the distortion
+
+```
+
