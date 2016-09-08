@@ -1,0 +1,72 @@
+---
+title: "BUS 4093 Assignment 1"
+author: Vince Parulan
+output: word_document
+---
+
+
+# Speed comparison 
+```{r}
+# copy here commands from your R script from item 1 to 4
+
+citibike <- "citibike.csv"
+
+library(data.table)
+library(readr)
+library(magrittr)
+
+default_start <- proc.time()
+data <- read.csv(citibike)
+default_time <- proc.time() - default_start
+
+fread_start <- proc.time()
+data <- fread(citibike)
+fread_time <- proc.time() - fread_start
+
+readtime <- unname(default_time[3])
+freadtime <- unname(fread_time[3])
+
+```
+
+The **speed comparison** for the two reading functions ...
+The function **read.csv** took `r readtime` while the function **fread.csv** took `r freadtime`.
+
+```{r}
+# copy here commands for items 5 and 6
+
+data %>% head(n=5)
+data %>% tail(n=8)
+dim <- data %>% dim()
+
+
+```
+
+The dimension of the file is `r dim[1]` rows and `r dim[2]` features...
+
+```{r}
+# here copy the code for item 7
+citi_structure <- data %>% str()
+
+
+for (i in names(data)){
+  print(i)}
+
+
+```
+
+The *data frame* structure shows `r citi_structure`...
+
+# Importing the file from the web
+
+```{r}
+# copy here commands for 8 and 9
+
+folder <- 'https://s3.amazonaws.com/tripdata/'
+file <- '201506-citibike-tripdata.zip'
+
+url <- paste(folder, file, sep = "")
+download.file(url, destfile = "myzip.zip")
+final_citibike <- read_csv("myzip.zip")
+
+```
+
